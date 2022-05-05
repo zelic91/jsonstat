@@ -13,3 +13,11 @@ brew install go
 ```
 go install github.com/zelic91/jsonstat
 ```
+
+## Usage
+
+Only JSON files are supported.
+
+```
+jsonstat <filename>
+```

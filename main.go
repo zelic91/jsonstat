@@ -1,14 +1,16 @@
 package main
 
 import (
-	"crypto/md5"
+	"crypto/sha512"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"reflect"
+	"sort"
 
+	"github.com/dustin/go-humanize"
 	"github.com/olekukonko/tablewriter"
 )
 
@@ -19,6 +21,15 @@ type statKey struct {
 
 type statValue struct {
 	Count int
+	Size  int
+}
+
+type result struct {
+	Key   string
+	Hash  string
+	Size  int
+	Count int
+	Total int
 }
 
 var stats map[statKey]statValue
@@ -28,7 +39,17 @@ func init() {
 }
 
 func main() {
-	file, err := ioutil.ReadFile("./getListViewData.json")
+	if len(os.Args) == 1 {
+		log.Panic("You must provide file name.")
+	}
+
+	fileName := os.Args[1]
+
+	if len(fileName) == 0 {
+		log.Panic("Invalid file name.")
+	}
+
+	file, err := ioutil.ReadFile(fileName)
 
 	if err != nil {
 		log.Panicf("Cannot open file: %v", err)
@@ -65,7 +86,7 @@ func doNode(path []string, root interface{}) {
 		if err != nil {
 			log.Panicf("Cannot build JSON byte: %v", err)
 		}
-		checksum := fmt.Sprintf("%x", md5.Sum(bytes))
+		checksum := fmt.Sprintf("%x", sha512.Sum512(bytes))
 
 		sk := statKey{
 			Key:  lastKey,
@@ -76,6 +97,7 @@ func doNode(path []string, root interface{}) {
 		if !ok {
 			s = statValue{
 				Count: 1,
+				Size:  len(bytes),
 			}
 		} else {
 			s.Count += 1
@@ -99,20 +121,39 @@ func doNode(path []string, root interface{}) {
 }
 
 func printResult() {
-	data := [][]string{}
-
+	data := []result{}
 	for key, value := range stats {
-		data = append(data, []string{
-			key.Key,
-			key.Hash,
+		data = append(data, result{
+			Key:   key.Key,
+			Hash:  key.Hash,
+			Size:  value.Size,
+			Count: value.Count,
+			Total: value.Size * value.Count,
+		})
+	}
+
+	sort.Slice(data, func(i, j int) bool {
+		return data[i].Count > data[j].Count
+	})
+
+	data = data[0:20]
+
+	tableData := [][]string{}
+
+	for _, value := range data {
+		tableData = append(tableData, []string{
+			value.Key,
+			value.Hash[len(value.Hash)-10:],
 			fmt.Sprintf("%d", value.Count),
+			humanize.Bytes(uint64(value.Size)),
+			humanize.Bytes(uint64(value.Total)),
 		})
 	}
 
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Key", "Checksum", "Count"})
+	table.SetHeader([]string{"Key", "Checksum", "Count", "Unit Size", "Total"})
 
-	for _, v := range data {
+	for _, v := range tableData {
 		table.Append(v)
 	}
 
